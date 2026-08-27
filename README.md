@@ -3,6 +3,12 @@
 Утилита для безопасного управления WireGuard / AmneziaWG / AmneziaWG 2.0
 и статическими маршрутами на роутерах Keenetic.
 
+## Скачать
+
+[⬇️ Скачать Keenetic Config Manager v2.0.0](https://github.com/switch-wq/Keenetic-Config-Manager/releases/download/v2.0.0/Keenetic-Config-Manager-v2.0.0.zip)
+
+Актуальный релиз: [v2.0.0](https://github.com/switch-wq/Keenetic-Config-Manager/releases/tag/v2.0.0)
+
 ## Интерфейс
 
 ### Главное окно
