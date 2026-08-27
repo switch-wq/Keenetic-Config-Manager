@@ -1,28 +1,30 @@
 # Changelog
 
-История изменений Keenetic Config Manager.
+## v2.0.0 — 2026-08-27
 
-## v1.3.4 — 27.08.2026
+### Added
+- Portable single-EXE launcher.
+- Safe updater for WireGuard / AmneziaWG / AmneziaWG 2.0.
+- DPAPI rollback baseline.
+- Full startup/running/routes safety backups.
+- Automatic rollback on failed update.
+- Static routes manager.
+- BAT/CMD/TXT and IP/CIDR bulk route import.
+- Duplicate Skip for existing/repeated ADD routes.
+- Route batching up to 950 changes per batch.
+- Async route loading with loading overlay.
+- Background interface/handshake/routes status worker.
+- Configurable Keenetic router URL and credentials.
+- Dark WPF UI and custom scrollbars.
+- Single-instance protection.
 
-### Изменено
+### Changed
+- Main application is distributed as one EXE instead of a visible PowerShell/VBS launcher set.
+- Route loading and status polling moved away from the UI thread to reduce freezes.
+- Secondary tools moved into a collapsible “Дополнительные инструменты” section.
+- Route manager and dialogs were moved to the same dark WPF visual style.
 
-* массовый импорт маршрутов больше не останавливается на уже существующих ADD-маршрутах;
-* маршруты, которые уже существуют на Keenetic, автоматически пропускаются;
-* повторяющиеся ADD-записи внутри импортируемого файла также пропускаются;
-* после импорта отображается общее количество найденных дубликатов;
-* пакетная обработка до 950 операций применяется только к маршрутам, которые действительно необходимо добавить или изменить.
-
-## v1.3.3
-
-### Исправлено
-
-* исправлено отображение таблицы маршрутов в Windows PowerShell 5.1;
-* строки таблицы маршрутов теперь заполняются вручную;
-* удаление и экспорт маршрутов используют `Row.Tag`.
-
-### Изменено
-
-* главное окно отображается до первого сетевого запроса к Keenetic;
-* первичный опрос роутера выполняется после появления окна;
-* скрытый launcher сохраняет ошибки PowerShell в `startup-error.log`;
-* сохранён пакетный импорт маршрутов до 950 операций за одну партию.
+### Safety
+- Old peer is not removed until the new configuration passes validation.
+- PrivateKey rollback data is stored locally using Windows DPAPI.
+- Route changes create a full backup before modification and support automatic rollback on failure.
