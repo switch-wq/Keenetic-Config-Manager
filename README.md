@@ -1,5 +1,3 @@
-# Keenetic Config Manager
-
 ![Keenetic Config Manager](screenshots/cover.png)
 
 Утилита для безопасного управления WireGuard / AmneziaWG / AmneziaWG 2.0
