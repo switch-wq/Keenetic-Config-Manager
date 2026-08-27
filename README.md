@@ -6,7 +6,7 @@
 
 ## Скриншот
 
-![Keenetic Config Manager](screenshots/main.jpg)
+![Keenetic Config Manager](screenshots/main.png)
 
 ## Возможности
 
