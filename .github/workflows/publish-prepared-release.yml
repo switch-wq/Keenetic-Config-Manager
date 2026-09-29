@@ -40,15 +40,11 @@ jobs:
           "base_tag=$baseTag" >> $env:GITHUB_OUTPUT
           "exe_name=$exeName" >> $env:GITHUB_OUTPUT
 
-      - name: Recreate PowerShell source
+      - name: Prepare build directories
         if: steps.gate.outputs.ready == 'true'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force build, dist | Out-Null
-          python -c "import base64,gzip,pathlib; parts=sorted(pathlib.Path('.release').glob('source.part.*')); payload=b''.join(p.read_bytes() for p in parts); out=pathlib.Path('build/Keenetic-Config-Manager-v2.1.0-Test1.ps1'); out.write_bytes(gzip.decompress(base64.b64decode(payload)))"
-          $expected = (Get-Content '.release/source.sha256' -Raw).Trim().ToLowerInvariant()
-          $actual = (Get-FileHash 'build/Keenetic-Config-Manager-v2.1.0-Test1.ps1' -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($actual -ne $expected) { throw "Source SHA256 mismatch: $actual != $expected" }
 
       - name: Download v2.0.0 base launcher
         if: steps.gate.outputs.ready == 'true'
@@ -68,6 +64,20 @@ jobs:
         shell: pwsh
         run: |
           python .github/release-tools/extract_embedded_assets.py build/base-v2.0.0.exe build/Keenetic-Config-Manager.ico build/Keenetic-Config-Manager-Icon.png
+
+      - name: Recreate PowerShell source from v2.0.0 + patch
+        if: steps.gate.outputs.ready == 'true'
+        shell: pwsh
+        run: |
+          python -c "import pathlib; e=pathlib.Path('build/base-v2.0.0.exe').read_bytes(); s=e.find(b'\xef\xbb\xbf#requires -Version 5.1'); p=e.find(b'\x89PNG\r\n\x1a\n',s); assert s>=0 and p>s; raw=e[s:p].rstrip(b'\x00'); pathlib.Path('build/Keenetic-Config-Manager.ps1').write_text(raw.decode('utf-8-sig').replace('\r\n','\n'),encoding='utf-8',newline='\n')"
+          python -c "import base64,bz2,pathlib; parts=sorted(pathlib.Path('.release').glob('patch.part.*')); pathlib.Path('build/kcm.patch').write_bytes(bz2.decompress(base64.b64decode(b''.join(p.read_bytes() for p in parts))))"
+          Push-Location build
+          git apply --unsafe-paths kcm.patch
+          Pop-Location
+          python -c "import pathlib; p=pathlib.Path('build/Keenetic-Config-Manager.ps1'); t=p.read_text(encoding='utf-8').replace('\r\n','\n').replace('\n','\r\n'); out=pathlib.Path('build/Keenetic-Config-Manager-v2.1.0-Test1.ps1'); out.write_bytes(b'\xef\xbb\xbf'+t.encode('utf-8'))"
+          $expected = (Get-Content '.release/source.sha256' -Raw).Trim().ToLowerInvariant()
+          $actual = (Get-FileHash 'build/Keenetic-Config-Manager-v2.1.0-Test1.ps1' -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "Source SHA256 mismatch: $actual != $expected" }
 
       - name: Generate launcher
         if: steps.gate.outputs.ready == 'true'
