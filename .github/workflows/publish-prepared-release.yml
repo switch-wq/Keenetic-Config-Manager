@@ -1,0 +1,138 @@
+name: Publish prepared pre-release
+
+on:
+  push:
+    branches:
+      - 'release/**'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout release branch
+        uses: actions/checkout@v4
+
+      - name: Check release is ready
+        id: gate
+        shell: pwsh
+        run: |
+          if (Test-Path '.release/ready') {
+            "ready=true" >> $env:GITHUB_OUTPUT
+          } else {
+            "ready=false" >> $env:GITHUB_OUTPUT
+            Write-Host 'Release payload is not ready yet; skipping.'
+          }
+
+      - name: Read metadata
+        if: steps.gate.outputs.ready == 'true'
+        id: meta
+        shell: pwsh
+        run: |
+          $tag = (Get-Content '.release/tag.txt' -Raw).Trim()
+          $title = (Get-Content '.release/title.txt' -Raw).Trim()
+          $baseTag = (Get-Content '.release/base-tag.txt' -Raw).Trim()
+          $exeName = (Get-Content '.release/exe-name.txt' -Raw).Trim()
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "title=$title" >> $env:GITHUB_OUTPUT
+          "base_tag=$baseTag" >> $env:GITHUB_OUTPUT
+          "exe_name=$exeName" >> $env:GITHUB_OUTPUT
+
+      - name: Recreate PowerShell source
+        if: steps.gate.outputs.ready == 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force build, dist | Out-Null
+          python -c "import base64,gzip,pathlib; p=pathlib.Path('.release/source.ps1.gz.b64'); out=pathlib.Path('build/Keenetic-Config-Manager-v2.1.0-Test1.ps1'); out.write_bytes(gzip.decompress(base64.b64decode(p.read_bytes())))"
+          $expected = (Get-Content '.release/source.sha256' -Raw).Trim().ToLowerInvariant()
+          $actual = (Get-FileHash 'build/Keenetic-Config-Manager-v2.1.0-Test1.ps1' -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) { throw "Source SHA256 mismatch: $actual != $expected" }
+
+      - name: Download v2.0.0 base launcher
+        if: steps.gate.outputs.ready == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force old | Out-Null
+          gh release download "${{ steps.meta.outputs.base_tag }}" --repo "${{ github.repository }}" --pattern 'Keenetic-Config-Manager-v2.0.0.zip' --dir old
+          Expand-Archive -Path 'old/Keenetic-Config-Manager-v2.0.0.zip' -DestinationPath 'old/unpacked' -Force
+          $baseExe = Get-ChildItem 'old/unpacked' -Recurse -Filter '*.exe' | Select-Object -First 1
+          if (-not $baseExe) { throw 'Base v2.0.0 EXE not found in release asset.' }
+          Copy-Item $baseExe.FullName 'build/base-v2.0.0.exe'
+
+      - name: Extract original icon assets
+        if: steps.gate.outputs.ready == 'true'
+        shell: pwsh
+        run: |
+          python .github/release-tools/extract_embedded_assets.py build/base-v2.0.0.exe build/Keenetic-Config-Manager.ico build/Keenetic-Config-Manager-Icon.png
+
+      - name: Generate launcher
+        if: steps.gate.outputs.ready == 'true'
+        shell: pwsh
+        run: |
+          python .github/release-tools/build_launcher.py --script build/Keenetic-Config-Manager-v2.1.0-Test1.ps1 --ico build/Keenetic-Config-Manager.ico --png build/Keenetic-Config-Manager-Icon.png --prefix .github/release-tools/launcher_prefix.c --out build/kcm_launcher.c
+          python .github/release-tools/make_icon_res.py build/Keenetic-Config-Manager.ico build/kcm.res
+
+      - name: Build Windows x64 EXE
+        if: steps.gate.outputs.ready == 'true'
+        shell: pwsh
+        run: |
+          $clang = (Get-Command clang.exe -ErrorAction SilentlyContinue).Source
+          $lld = (Get-Command lld-link.exe -ErrorAction SilentlyContinue).Source
+          if (-not $clang -and (Test-Path 'C:\Program Files\LLVM\bin\clang.exe')) { $clang = 'C:\Program Files\LLVM\bin\clang.exe' }
+          if (-not $lld -and (Test-Path 'C:\Program Files\LLVM\bin\lld-link.exe')) { $lld = 'C:\Program Files\LLVM\bin\lld-link.exe' }
+          if (-not $clang) { throw 'clang.exe not found on windows-latest runner.' }
+          if (-not $lld) { throw 'lld-link.exe not found on windows-latest runner.' }
+          $exe = "dist/${{ steps.meta.outputs.exe_name }}"
+          & $clang -target x86_64-pc-windows-msvc -c -O2 -fno-stack-protector -fno-ident -ffreestanding -nostdlib -o build/kcm_launcher.obj build/kcm_launcher.c
+          if ($LASTEXITCODE -ne 0) { throw "clang failed: $LASTEXITCODE" }
+          & $lld /subsystem:windows /entry:WinMainCRTStartup /nodefaultlib /machine:x64 "/out:$exe" build/kcm_launcher.obj build/kcm.res
+          if ($LASTEXITCODE -ne 0) { throw "lld-link failed: $LASTEXITCODE" }
+
+      - name: Verify embedded payload and create release pack
+        if: steps.gate.outputs.ready == 'true'
+        shell: pwsh
+        run: |
+          $exe = "dist/${{ steps.meta.outputs.exe_name }}"
+          python -c "from pathlib import Path; e=Path(r'$exe').read_bytes(); s=Path('build/Keenetic-Config-Manager-v2.1.0-Test1.ps1').read_bytes(); assert s in e, 'embedded PS1 mismatch'; print('embedded PS1 verified')"
+          Copy-Item 'build/Keenetic-Config-Manager-v2.1.0-Test1.ps1' 'dist/Keenetic-Config-Manager-v2.1.0-Test1.ps1'
+          $lines = @()
+          foreach ($f in @($exe, 'dist/Keenetic-Config-Manager-v2.1.0-Test1.ps1')) {
+            $h = (Get-FileHash $f -Algorithm SHA256).Hash.ToLowerInvariant()
+            $lines += "$h  $([IO.Path]::GetFileName($f))"
+          }
+          [IO.File]::WriteAllLines((Join-Path $PWD 'dist/SHA256.txt'), $lines, [Text.Encoding]::ASCII)
+          New-Item -ItemType Directory -Force pack | Out-Null
+          Copy-Item $exe pack/
+          Copy-Item 'dist/Keenetic-Config-Manager-v2.1.0-Test1.ps1' pack/
+          Copy-Item 'README.md' pack/
+          Copy-Item 'CHANGELOG.md' pack/
+          Copy-Item 'docs/releases/v2.1.0-test1.md' pack/RELEASE_NOTES_v2.1.0-Test1.md
+          Copy-Item 'dist/SHA256.txt' pack/
+          Compress-Archive -Path 'pack/*' -DestinationPath 'dist/Keenetic-Config-Manager-v2.1.0-Test1-GitHub-Release-Pack.zip' -Force
+
+      - name: Publish GitHub pre-release
+        if: steps.gate.outputs.ready == 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ steps.meta.outputs.tag }}"
+          $title = "${{ steps.meta.outputs.title }}"
+          $repo = "${{ github.repository }}"
+          $assets = @(
+            "dist/${{ steps.meta.outputs.exe_name }}",
+            'dist/Keenetic-Config-Manager-v2.1.0-Test1-GitHub-Release-Pack.zip',
+            'dist/Keenetic-Config-Manager-v2.1.0-Test1.ps1',
+            'dist/SHA256.txt'
+          )
+          gh release view $tag --repo $repo *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release edit $tag --repo $repo --title $title --notes-file 'docs/releases/v2.1.0-test1.md' --prerelease
+            gh release upload $tag @assets --repo $repo --clobber
+          } else {
+            gh release create $tag @assets --repo $repo --target main --title $title --notes-file 'docs/releases/v2.1.0-test1.md' --prerelease
+          }
