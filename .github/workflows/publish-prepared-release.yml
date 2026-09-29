@@ -45,7 +45,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force build, dist | Out-Null
-          python -c "import base64,gzip,pathlib; p=pathlib.Path('.release/source.ps1.gz.b64'); out=pathlib.Path('build/Keenetic-Config-Manager-v2.1.0-Test1.ps1'); out.write_bytes(gzip.decompress(base64.b64decode(p.read_bytes())))"
+          python -c "import base64,gzip,pathlib; parts=sorted(pathlib.Path('.release').glob('source.part.*')); payload=b''.join(p.read_bytes() for p in parts); out=pathlib.Path('build/Keenetic-Config-Manager-v2.1.0-Test1.ps1'); out.write_bytes(gzip.decompress(base64.b64decode(payload)))"
           $expected = (Get-Content '.release/source.sha256' -Raw).Trim().ToLowerInvariant()
           $actual = (Get-FileHash 'build/Keenetic-Config-Manager-v2.1.0-Test1.ps1' -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($actual -ne $expected) { throw "Source SHA256 mismatch: $actual != $expected" }
