@@ -1,5 +1,23 @@
 # Changelog
 
+## v2.1.0-test1 — 2026-09-29
+
+### Added
+- Native WireGuard config import via `interface WireguardN wireguard import {url}` on KeeneticOS 5.2+.
+- One-shot local HTTP delivery of the original `.conf` to the Keenetic native importer.
+- AmneziaWG 3.0 / 3.1 parsing and ASC read-back.
+- Support for HeaderProtectionKey and the new AWG 3.x timing/padding options.
+
+### Changed
+- Rollback baseline is no longer mandatory and no longer blocks config updates.
+- Main update action simplified to `Обновить конфиг`.
+- Native import is preferred; legacy per-field update remains a fallback path.
+- Safety backups remain automatic before configuration changes.
+
+### Fixed
+- AWG 3.1 → AWG 2.0 replacement on KeeneticOS 5.2 Alpha 11 when the same config succeeds through the Keenetic web UI.
+- Handshake sentinel values (`0`, negative, `>= Int32.MaxValue`) are no longer reported as successful handshakes.
+
 ## v2.0.0 — 2026-08-27
 
 ### Added
@@ -17,14 +35,3 @@
 - Configurable Keenetic router URL and credentials.
 - Dark WPF UI and custom scrollbars.
 - Single-instance protection.
-
-### Changed
-- Main application is distributed as one EXE instead of a visible PowerShell/VBS launcher set.
-- Route loading and status polling moved away from the UI thread to reduce freezes.
-- Secondary tools moved into a collapsible “Дополнительные инструменты” section.
-- Route manager and dialogs were moved to the same dark WPF visual style.
-
-### Safety
-- Old peer is not removed until the new configuration passes validation.
-- PrivateKey rollback data is stored locally using Windows DPAPI.
-- Route changes create a full backup before modification and support automatic rollback on failure.
